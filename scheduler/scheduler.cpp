@@ -1,0 +1,251 @@
+#include <iostream>
+#include <cstdlib>
+#include <cstdio>
+#include <string>
+#include <sstream>
+#include <fstream>
+#include <exception>
+#include "scheduler.h"
+
+using namespace std;
+
+const int SIZE = 4;
+const int BUFFSIZE = 256;
+
+// validated input for a bool
+bool get_bool()
+{
+  bool tf;
+  printf("Enter a '0' to answer NO or a '1' to answer YES: ");
+  while (!(std::cin >> tf)) {
+    printf("Enter a '0' to answer NO or a '1' to answer YES: ");
+    std::cin.clear();
+    std::cin.ignore(1000000, '\n');
+  }
+  return tf;
+}
+
+//get filename
+bool check_file(const char *fname)
+{
+  ifstream f(fname);
+    if (f.good()) {
+        f.close();
+	std::cout << "File found! Great!" << std::endl;
+        return true;
+    } else {
+        f.close();
+	std::cout << "Error! File not found!" << std::endl;
+        return false;
+    }
+}
+
+void addInput(RBT *t) {
+
+    extern long numP;
+
+    // char holding the file name,  Maximum BUFFSIZE = 256.
+    char f[BUFFSIZE];
+
+    /* prompting user if input is a file. */
+    printf("Would you like to select an input file?\n");
+    bool response = get_bool();
+
+    if(response) {
+
+	printf("\nPlease make sure your input file is formatted/tabbed as such:");
+	printf("\nP_ID\tBurst\tArrival\tPriority\n1\t8\t0\t23\n2\t4\t2\t17\n");
+
+        printf("Enter the file name: ");
+        scanf("%s",f);
+	while(!check_file(f)){
+		printf("Enter the correct file name: ");
+        	scanf("%s",f);
+	}
+	readFile(f, t);
+    }
+
+    // create new process with manual user input
+    else {
+        int pid;
+        int burst = 0;
+        int arrival;
+        int priority = 120;
+
+	// TODO : check for unique Pid
+        printf("Enter process id: ");
+	pid = get_long();
+
+	while(burst < 1){
+		printf("Enter the burst (must be greater than zero): ");
+		burst = get_long();
+	}
+
+        printf("Enter the arrival: ");
+	arrival = get_long();
+
+	while(priority<0 || priority>99){
+        	printf("Enter a priority (0-99): ");
+		priority = get_long();
+	}
+
+        Process *pr = new Process(pid, burst, arrival, priority);
+        #ifdef DEBUG
+        cout << "Process successfully allocated!" << endl;
+        cout << pr->pid << " " << pr->burst << " " << pr->arrival <<" "
+             << pr->priority << endl;
+        #endif
+        t->insertByArrival(pr);
+
+    ++numP;
+    }
+
+}
+
+// Asks user whether any additional processes need to be added.
+void promptUser(RBT *t) {
+
+    bool again = true;
+    while(again) {
+        printf("Would you like to add processes?\n");
+        again = get_bool();
+        if (again) {
+            addInput(t);
+        }
+    }
+}
+
+// Takes in a matrix of data that will be used to create a new process.
+// This is used for processes read from a file.  It returns a pointer to
+// the newly allocated process.
+Process* addProcess(long data[]) {
+
+	try {
+        	extern long numP;
+        	// allocate memory for new process
+        	Process *p = new Process(data[0],data[1],data[2],data[3]);
+        	//Process *p;
+        	#ifdef DEBUG
+        	cout << "Process successfully allocated!" << endl;
+        	cout << p->pid << " " << p->burst << " " << p->arrival << " " << p->priority << endl;
+        	#endif
+        	++numP;
+        	return p;
+    	}
+
+	// Throw exception if error allocating memory
+    	catch (exception& ex) {
+        	cout << "Standard exception thrown: " << ex.what() << endl;
+    	}
+    	//Process *x = p;
+}
+
+// Reads list of processes from a file and sends those processes
+// to the arrival tree
+void readFile(char *f, RBT *tree) {
+
+	char buff[BUFFSIZE];    // maximum size of line
+	ifstream infile(f);     // file created in ifstream
+	stringstream ss;        // Each line from file is brought into stringstreamm
+	Process *p;
+
+        printf("\nThis program can sanitize the input file by resolving any errors\n");
+        printf("using the following rules:\n");
+        printf("1. if a value contains non-numerical character(s), it will only take a\n");
+        printf("   number preceeding the first non-numerical character.\n");
+        printf("   (for example, '6f8' becomes '6', and '386 34' becomes '386')\n");
+        printf("2. decimals and arithemtic symbols will be ignored.\n");
+        printf("   (for example, '5.9' becomes '5', and '6/3' becomes '6')\n");
+        printf("3. if a value is invalid for any other reason (outside of valid bounds, etc),\n");
+        printf("   it will prompt you for a new valid value\n");
+
+	printf("Would you like to sanitize the input file before loading?\n");
+        bool santz = get_bool();
+
+	// Consume first line of file that has the column descriptions.
+	infile.getline(buff, BUFFSIZE);
+
+	/* While loop runs while file is not empty.  Each call to getline
+	consumes one line of the file.  Each line is loaded into buff. */
+	while(infile.getline(buff, BUFFSIZE)) {
+		ss << buff;       // buff is brought into stringstream
+		long data[SIZE];   // array takes each of the 4 data types
+
+	        // for loop fills aray with each of the 4 data types
+		for(int j = 0; j < SIZE; ++j) {
+
+        		// getline consumes each tab seperating data types
+			ss.getline(buff, 256, '\t'); // account for up to 256 digits
+
+			long nextValue = atol(buff);
+
+			//  Begin sanitizing current line / validating
+        		if (santz) {
+
+				// NOTICE: Not currently validating Pid
+
+				///// VALIDATE PID: must be unique
+				if((j==0) && (nextValue<1)){
+                                                printf("The ID of the next process is '%s'\n", buff);
+                                                printf("A process ID must be a number greater than zero.\n");
+                                                printf("Please enter a valid process ID:");
+                                                nextValue = get_long();
+						while(nextValue < 1){
+							printf("ID must be greater than zero.\n");
+							nextValue = get_long();
+						}
+
+
+				} else if((j==1) && (nextValue<1)){
+					printf("The original burst for process '%lu' is '%s'\n", data[0], buff);
+					printf("Please enter a valid burst (a number greater than zero):");
+					nextValue = get_long();
+					while(nextValue < 1){
+						printf("Must be greater than zero. \n");
+						nextValue = get_long();
+					}
+
+
+				} // end of if statement
+			} // done sanitizing this line 
+
+			data[j] = nextValue; // load next value into array
+			ss << ""; // I don't remember what this was for
+			ss.clear(); // Clears the stringstream
+		}
+
+		p = addProcess(data); // array passed to addProcesses to create a Process object
+		p->left = tree->nil;
+		p->right = tree->nil;
+		p->parent = tree->nil;
+
+		tree->insertByArrival(p);
+	}
+
+	infile.close(); // infile is closed
+
+}
+// used in debug mode to verify tree formed correctly
+// by perfoming in-order tree walk and incrementing countr
+// variable at every node.
+void treeTests(RBT *t) {
+
+        extern int countr;  //to check for correct output form rbt
+
+		t->inOrderTreeWalk(t->root);
+		cout << countr << endl;
+		while(t->root != t->nil) {
+		    cout << "Removing: " << t->root->priority<< endl;
+            t->remove(t->root);
+            countr--;
+		}
+		//countr = 0;
+		//arrivalTree->inOrderTreeWalk(t->root);
+		cout << countr << endl;
+
+}
+
+
+
+
+

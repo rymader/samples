@@ -1,0 +1,659 @@
+/*! \file AST.h
+
+Contains all the classes for building an abstract syntax tree of the DSL. Details about unparse methods can be
+found in parser.cpp.
+
+*/
+
+#ifndef Node_H
+#define Node_H
+
+#include <string>
+#include <iostream> 
+#include <sstream>
+
+#include "scanner.h"
+
+class Node ;
+
+
+/*! \class Node
+  \brief Node is the base class in which all other classes
+will inherit from.
+*/
+class Node {
+	public:
+		/*! Unparse will return a virtual string 
+			\return " " a virtual string
+		*/
+		virtual std::string unparse ( ) { return " This should be pure virtual ";} ;
+		/*! cppCode returns a virtual string
+			\return " " a virtual string
+		*/
+		virtual std::string cppCode ( ) { return " This should be pure virtual" ; } ;
+		virtual ~Node() { }
+} ;
+
+/*! \class Expr
+  \brief A subclass of Node that is the base class 
+for all Expression objects.
+*/
+class Expr : public Node {
+};
+
+/*! \class ConstExpr
+  \brief This is a subclass of Expr that
+creates objects of Integer, Float, and String constants.
+*/ 
+class ConstExpr : public Expr {
+
+};
+
+/*! \class IntExpr
+  \brief This is the class for turning an Expression into an Integer Constant.
+*/
+class IntExpr : public ConstExpr {
+
+	private:
+
+	std::string intConst;
+
+
+	public:
+	
+	std::string unparse();	
+	
+	std::string cppCode();
+
+/*!
+	This consturctor takes 1 argument:
+	\param intConst the value of the Integer Constant.
+*/
+	IntExpr(std::string intConst) : intConst(intConst){}
+
+
+
+};
+
+/*! \class FloatExpr
+  \brief This is a class for turning an Expression into a Float Constant.
+*/
+class FloatExpr : public ConstExpr {
+
+	private:
+	std::string floatConst;
+
+
+	public:
+	std::string unparse();
+
+	std::string cppCode();
+
+	/*! This constructor takes 1 argument:
+		\param floatConst the value of the Float Constant.
+	*/
+	FloatExpr(std::string floatConst) : floatConst(floatConst) {}
+
+};
+
+/*! \class StringExpr
+  \brief This is a class for turning an Expression into a String Constant.
+*/
+class StringExpr : public ConstExpr {
+
+	private:
+	std::string  stringConst;
+
+	public:
+
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	/*! This constructor takes 1 argument:
+		\param stringConst the value of the String Literal.
+	*/	
+	StringExpr(std::string stringConst) : stringConst(stringConst) {}
+
+};
+
+
+/*! \class Stmts
+  \brief This class seves as the base class for Stmts objects. 
+It inherits from the class Node.
+*/
+class Stmts : public Node {
+
+};
+
+/*! \class Stmt
+  \brief This class serves as the base class for Stmt objects.
+It inherits from the class Node.
+*/
+class Stmt : public Node {
+
+};
+
+/*! \class Decl
+  \brief This class serves as the base class for the Decl objects.
+It inherits form the class Node.
+*/
+class Decl : public Node {
+
+};
+
+/*! \class Program
+  \brief This is a class for creating the program object.
+
+*/
+class Program : public Node {
+	public:
+
+	/*! This constructor takes 2 arguments:
+		\param vName A string that is the name of the variable defining the program.
+		\param *s1 A pointer to a Stmts object.
+	*/
+	Program(std::string vName, Stmts * s1) : varName(vName), stmts(s1) {}
+
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	std::string varName;
+	Stmts * stmts;
+};
+
+/*! \class BinaryExpr
+  \brief This is a class for creating an expression involving binary operations.
+*/
+class BinaryExpr : public Expr {
+	public:
+	
+	/*! This constructor takes 3 arguments:
+		\param *e1 A pointer to an Expr object.
+		\param op A pointer to a string that holds the arithmetic operator (+,-,*,/)
+		\param *e2 A pointer to another Expr object.
+	*/
+	BinaryExpr(Expr * e1, std::string op, Expr * e2) : opr1(e1), sign(op), opr2(e2) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+  	
+  	private:
+  		Expr * opr1;
+  		std::string sign;
+  		Expr * opr2;
+};
+
+/*! \class VarExpr
+  \brief This is a class for creating a variable expression.
+It is a subclass of Expr.
+*/
+class VarExpr : public Expr {
+	public:
+	/* This constructor takes 1 argument:
+		\param vName A string that contains the name of the variable.
+	*/
+	VarExpr(std::string vName) : varName(vName) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	std::string varName;
+};
+
+/*! \class VarParenExpr
+  \brief This is a class for creating a variable multiplied by an expression in parenthesis
+*/
+class VarParenExpr : public Expr {
+	public:
+
+	/*! This constructor takes 2 arguments:
+		\param vName A string that contains the name of the variable.
+		\param *e1 A pointer to an Expr object.
+	*/
+	VarParenExpr(std::string vName, Expr * e1) : varName(vName), expr(e1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	std::string varName;
+	Expr * expr;
+};
+
+/*! \class ExprExpr
+  \brief This is a class for an expression that is inside parenthesis.
+*/
+class ExprExpr : public Expr {
+	public:
+	
+	/*! This constructor takes 1 argument:
+		\param *e1 A pointer to an Expr object.
+	*/
+	ExprExpr(Expr * e1) : expr(e1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Expr * expr;
+};
+
+/*! \class NotExpr
+  \brief This is a class for an expression involving a not statement.
+*/
+class NotExpr : public Expr {
+	public:
+
+	/*! This constructor takes 1 argument:
+		\param *e1 A pointer to an Expr object.
+	*/
+	NotExpr(Expr * e1) : expr(e1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Expr * expr;
+};
+
+/*! \class StandardDecl
+ \brief This is a class for an a standard declaration involing an Integer, Float, or
+String (not a Matrix declaration).
+*/
+class StandardDecl : public Decl {
+
+	private:
+	std::string kwd;
+	std::string varName;
+	
+	public:
+	/*! @return ss A stringstream that contains "kwd varName;" 
+	std::string unparse();
+	*/
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	/*! This constructor takes 2 arguments:
+		\param kwd A string that names the keyword as an Integer, Float, or String.
+		\param varname A string that names the variable being defined.
+	*/	
+	StandardDecl(std::string kwd, std::string varName) : kwd(kwd), varName(varName) {}
+
+};
+
+/*! \class IfElseExpr
+  \brief This is a class for an expression involving an if/else statement.
+
+*/
+class IfElseExpr : public Expr {
+	public:
+
+	/*! This constructor takes 3 arguments:
+		\param *e1 A pointer to an Expr object.
+		\param *e2 A pointer to an Expr object.
+		\param *e3 A pointer to an Expr object.
+	*/
+	IfElseExpr(Expr * e1, Expr * e2, Expr * e3) : expr1(e1), expr2(e2), expr3(e3) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Expr * expr1;
+	Expr * expr2;
+	Expr * expr3;
+};
+
+/*! \class SemiStmt
+  \brief This is a class that adds a semicolon at the end of a statement.
+
+*/
+class SemiStmt : public Stmt {
+	public:
+
+	/*! This constructor has no parameters
+	*/
+	SemiStmt() {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+};
+
+/*! \class AssignStmt
+  \brief This is a class that creates a statement that involves an assignment with the = sign
+
+*/
+class AssignStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 2 arguments:
+		\param vName A string that holds the name of the variable being assigned.
+		\param *e1 A pointer to an expression object
+	*/
+	AssignStmt(std::string vName, Expr * e1) : varName(vName), expr(e1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+
+	
+	private:
+	std::string varName;
+	Expr * expr;
+};
+
+/*! \class MatrixDecl
+  \brief This is a class that declares a matrix. It has two subclasses, one for a 
+simple matrix declaration and the other for a complex matrix declaration.
+*/
+class MatrixDecl : public Decl {
+       
+};
+
+/*! \class SimpleMatrixAssignDecl
+  \brief This is a class that declares a simple matrix
+
+*/
+class SimpleMatrixAssignDecl : public MatrixDecl {
+	private:
+	std::string varName;
+	Expr* expr;	
+
+	public:
+
+	/*! @return ss A stringstream forming "Matrix varName [expr,expr];
+	*/
+	std::string unparse();
+	
+	std::string cppCode();
+
+	/*! This constructor takes 2 arguments:
+		\param varName A string that holds the name of the matrix
+		\param *expr A pointer to an Expr object
+	*/		
+	SimpleMatrixAssignDecl(std::string varName, Expr* expr) : varName(varName), expr(expr) {}
+};
+
+/*! \class ComplexMatrixAssignDecl
+  \brief This is a class that declares a complex matrix 
+*/
+class ComplexMatrixAssignDecl : public MatrixDecl {
+
+	private:
+	std::string varName;
+	Expr* expr;
+	Expr* expr2;
+	Expr* varName2;
+	Expr* varName3;
+	Expr* expr3;
+	
+	
+		
+	public:
+	std::string unparse();
+	
+	//std::string cppCode();
+	
+	/*! This constructor takes 6 arguments:
+		\param varname A string that holds the name of the matrix
+		\param *expr A pointer to an Expr object
+		\param *expr2 A pointer to an Expr object
+		\param *varName2 A pointer to a varName that is an Expr object
+		\param *varName3 A pointer to a varName that is an Expr object
+		\param *expr3 A pointer to a Expr object
+	*/	
+	ComplexMatrixAssignDecl(std::string varName, Expr* expr, Expr* expr2, Expr* varName2, Expr* varName3, Expr* expr3) : varName(varName), expr(expr), expr2(expr2), varName2(varName2), varName3(varName3), expr3(expr3) {}
+};	
+
+/*! \class ForStmt
+  \brief This is a class for a statement involving a for loop
+*/
+class ForStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 4 arguments:
+		\param vName A string that holds the name of an integer variable
+		\param *e1 A pointer to an Expr object
+		\param *e2 A pointer to an Expr object
+		\param *s1 A pointer to a Stmt object
+	*/
+	ForStmt(std::string vName, Expr * e1, Expr * e2, Stmt * s1) : varName(vName), expr1(e1), expr2(e2), stmt(s1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	std::string varName;
+	Expr * expr1;
+	Expr * expr2;
+	Stmt * stmt;
+};
+
+/*! \class PrintStmt
+  \brief This is a class for a print statement
+
+*/
+class PrintStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 1 argument:
+		\param *e1 A pointer to an Expr object
+	*/
+	PrintStmt(Expr * e1) : expr(e1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Expr * expr;
+};
+
+/*! \class MatrixAssignStmt
+  \brief This is a class for a statement that assigns a matrix
+
+*/
+class MatrixAssignStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 4 arguments:
+		\param vName A string that holds the name of the matrix
+		\param *e1 A pointer to an Expr object
+		\param *e2 A pointer to an Expr object
+		\param *e3 A pointer to an Expr object
+	*/
+	MatrixAssignStmt(std::string vName, Expr * e1, Expr * e2, Expr * e3) : varName(vName), expr1(e1), expr2(e2), expr3(e3) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	std::string varName;
+	Expr * expr1;
+	Expr * expr2;
+	Expr * expr3;
+};
+
+/*! \class IfStmt
+  \brief This is a class for an 'if' statement
+
+*/
+class IfStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 2 arguments:
+		\param *e1 A pointer to an Expr object
+		\param *s1 A pointer to a Stmt object
+	*/
+	IfStmt(Expr * e1, Stmt * s1) : expr(e1), stmt(s1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Expr * expr;
+	Stmt * stmt;
+};
+
+/*! \class IfElseStmt
+  \brief This is a class for an 'if/else' statement
+*/
+class IfElseStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 3 arguments;
+		\param *e1 A pointer to an Expr object
+		\param *s1 A pointer to a Stmt object
+		\param *s2 A pointer to a Stmt object
+	*/
+	IfElseStmt(Expr * e1, Stmt * s1, Stmt * s2) : expr1(e1), stmt1(s1), stmt2(s2) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Expr * expr1;
+	Stmt * stmt1;
+	Stmt * stmt2;
+};
+
+/*! \class BlockStmt
+  \brief This is a class for a statement in brackets {}
+
+*/
+class BlockStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 1 argument:
+		\param *s1 A pointer to a Stmts object
+	*/
+	BlockStmt(Stmts * s1) : stmts(s1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Stmts * stmts;
+};
+
+/*! \class DeclStmt
+  \brief This is a class for a statement that involves a declaration. It
+creates an object that will be of a Decl class.
+*/
+class DeclStmt : public Stmt {
+	public:
+
+	/*! This constructor takes 1 argument:
+		\param *d1 A pointer to a Decl object
+	*/
+	DeclStmt(Decl * d1) : decl(d1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Decl * decl;
+};
+
+/*! \class ExpandStmts
+  \brief This is a class for creating a nonempty statements object
+
+*/
+class ExpandStmts : public Stmts {
+	public:
+
+	/*! This constructor takes 2 arguments;
+		\param *s1 A pointer to a Stmt object
+		\param *s2 A pointer to a Stmts object
+	*/
+	ExpandStmts(Stmt * s1, Stmts * s2) : stmt(s1), stmts(s2) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Stmt * stmt;
+	Stmts * stmts;
+};
+
+/*! \class EmptyStmts
+  \brief This is a class for creating an empty statements object
+
+*/
+class EmptyStmts : public Stmts {
+	public:
+	/* This constructor takes no parameters.
+	*/
+	EmptyStmts() {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+};
+
+/*! \class LetExpr
+  \brief This is a class for an expression involving the 'let' keyword
+
+*/
+class LetExpr : public Expr {
+	public:
+	/*! This constructor takes 2 arguments:
+		\param *s1 A pointer to a Stmts object
+		\param *e1 A pointer to an Expr object
+	*/
+	LetExpr(Stmts * s1, Expr * e1) : stmts(s1), expr(e1) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	Stmts * stmts;
+	Expr * expr;
+
+};
+
+/*! \class MatrixVarExpr
+  \brief This is a class for an expression that contains a variable that is a matrix
+
+*/
+class MatrixVarExpr : public Expr {
+	public:
+
+	/*! This constructor takes 3 arguments:
+		\param vName A string that contains the name of the matrix variable
+		\param *e1 A pointer to an Expr object
+		\param *e2 A pointer to an Expr object
+	*/
+	MatrixVarExpr(std::string vName, Expr * e1, Expr * e2) : varName(vName), expr1(e1), expr2(e2) {}
+	
+	std::string unparse();
+	
+	std::string cppCode();
+	
+	private:
+	std::string varName;
+	Expr * expr1;
+	Expr * expr2;
+
+};
+#endif

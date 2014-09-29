@@ -1,0 +1,7 @@
+input/empty.txt
+input/onlyspaces.txt
+input/pdfexample.txt
+input/sherlock1.txt
+input/sherlock2.txt
+input/sherlock3.txt
+input/doesntexist.txt

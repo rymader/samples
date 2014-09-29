@@ -1,0 +1,12 @@
+CSci4061 S2013 PA4
+
+section: 7
+date: 04/11/14
+name: Madison Hennig, Ryan Mader
+id: 4659375, 4901607
+
+Extra credit: not implemented
+
+Compilation: ./retrieve "input file (can include sub directory it's in as well)" "output directory" num_threads
+
+Note: subsequent calls are appended to log.txt, files.out are overwritten

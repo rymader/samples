@@ -1,0 +1,41 @@
+Program ::= nameKwd colon variableName semiColon Platform Decls States
+Decl ::= 'Matrix' varName '[' Expr ',' Expr ']' varName ',' varName  '=' Expr ';'
+Decl ::= 'Matrix' varName '=' Expr ';'
+standardDecl ::= intKwd
+standardDecl ::= floatKwd
+standardDecl ::= stringKwd
+Decl ::= Matrix variableName
+Decl ::= Decl variableName semiColon
+Stmts ::= Stmt Stmts
+Stmts ::= <<EMPTY>>
+Stmt ::= Decl
+Stmt ::= '{' Stmts '}'
+Stmt ::= 'if' '(' Expr ')' Stmt
+Stmt ::= 'if' '(' Expr ')' Stmt 'else' Stmt
+Stmt ::= varName '=' Expr ';'  | varName '[' Expr ',' Expr ']' '=' Expr ';'
+Stmt ::= 'print' '(' Expr ')' ';'
+Stmt ::= 'for' '(' varName '=' Expr 'to' Expr ')' Stmt
+Stmt ::= ';'
+Stmt ::= variableName assign Expr semiColon
+
+
+
+Expr ::= intConst
+Expr ::= floatConst
+Expr ::= stringConst
+Expr ::= variableName
+Expr ::= variableName '(' Expr ')'
+Expr ::= leftParen Expr rightParen
+Expr ::= 'if' Expr 'then' Expr 'else' Expr  
+Expr ::= 'let' Stmts 'in' Expr 'end' 
+Expr ::= '!' Expr 
+Expr ::= Expr plusSign Expr
+Expr ::= Expr star Expr
+Expr ::= Expr dash Expr
+Expr ::= Expr forwardSlash Expr
+Expr ::= Expr equalEquals Expr
+Expr ::= Expr lessThanEquals Expr
+Expr ::= Expr greaterThanEquals Expr
+Expr ::= Expr notEquals Expr
+Expr ::= Expr leftAngle Expr
+Expr ::= Expr rightAngle Expr

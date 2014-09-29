@@ -1,0 +1,1325 @@
+//! \file parser.cpp
+
+/* A recursive descent parser with operator precedence.
+
+   Author: Eric Van Wyk
+   Modified: Robert Edge 		
+
+   This algorithm is based on the work of Douglas Crockford in "Top
+   Down Operator Precedence", a chapter in the book "Beautiful Code".
+   Mr. Crockford describes in his chapter how his work is based on an
+   algorithm described Vaughan Pratt in "Top Down Operator
+   Precedence", presented at the ACM Symposium on Principles of
+   Programming Languages.
+
+   Douglas Crockford's chapter is available at 
+    http://javascript.crockford.com/tdop/tdop.html
+
+   Vaughan Pratt's paper is available at 
+    http://portal.acm.org/citation.cfm?id=512931
+
+   These are both quite interesting works and worth reading if you
+   find the problem of parsing to be an interesting one.
+
+   Last modified: Oct 13, 2013.
+
+*/
+
+#include "parser.h"
+#include "scanner.h"
+#include "extToken.h"
+#include "parseResult.h"
+#include <stdio.h>
+#include <assert.h>
+using namespace std ;
+
+//! Destructor for Parser deletes all tokens
+Parser::~Parser() {
+    if (s) delete s ;
+
+    ExtToken *extTokenToDelete ;
+    currToken = tokens ;
+    while (currToken) {
+        extTokenToDelete = currToken ;
+        currToken = currToken->next ;
+        delete extTokenToDelete ;
+    }
+
+    Token *tokenToDelete ;
+    Token *currScannerToken = stokens ;
+    while (currScannerToken) {
+        tokenToDelete = currScannerToken ;
+        currScannerToken = currScannerToken->next ;
+        delete tokenToDelete ;
+    }
+
+}
+
+
+//! No arg contstructor for Parser
+Parser::Parser ( ) { 
+    currToken = NULL; prevToken = NULL ; tokens = NULL; 
+    s = NULL; stokens = NULL; 
+}
+/*! \brief Asserts text in parameters is not NULL, creates a ParseResult 
+and a new Scanner.  Checks that the tokenlist is valid and if no errors
+are called a call to parseProgram is made.
+  \param A const char of the text input
+  \return A ParseResult
+*/
+ParseResult Parser::parse (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseProgram( ) ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+}
+
+/* "scanner.h"
+ * parse methods for non-terminal symbols
+ * --------------------------------------
+ */
+
+
+// Program
+//! \return A ParseResult for Program
+ParseResult Parser::parseProgram () {
+    ParseResult pr ;
+
+    // Program ::= varName '(' ')' '{' Stmts '}'
+    match(variableName) ;
+    string name( prevToken->lexeme ) ;
+    match(leftParen) ;
+    match(rightParen) ;
+    match(leftCurly);
+    ParseResult prStmts = parseStmts() ;
+    match(rightCurly);
+    match(endOfFile) ;
+
+//! Create new Stmts and declare pr a new Program
+	Stmts * stmts = dynamic_cast<Stmts *>(prStmts.ast);
+	pr.ast = new Program(name, stmts);
+	return pr ;
+}
+
+
+// MatrixDecl
+/*! \brief Creates a ParseResult and attempts to match to either a simple or complex matrix. 
+ \return A ParseResult for MatrixDecl
+*/
+ParseResult Parser::parseMatrixDecl () {
+    ParseResult pr ;
+    match(matrixKwd);
+    match(variableName) ;
+    std::string var = prevToken->lexeme.c_str();
+
+    // Decl ::= 'Matrix' varName '[' Expr ',' Expr ']' varName ',' varName  '=' Expr ';'
+	if(attemptMatch(leftSquare)){
+		std::string varName = prevToken->lexeme.c_str();
+		ParseResult expr = parseExpr(0);
+		match(comma);
+		 
+		ParseResult expr2 = parseExpr(0);
+		match(rightSquare);
+		
+		ParseResult varName2 = parseVariableName();
+		match(comma);
+		ParseResult varName3 = parseVariableName();
+		match(assign);
+		ParseResult expr3 = parseExpr(0);
+
+ 
+		Expr * exp1 = dynamic_cast<Expr *>(expr.ast);
+		Expr * exp2 = dynamic_cast<Expr *>(expr2.ast);
+		Expr * var2 = dynamic_cast<Expr *>(varName2.ast);
+		Expr * var3 = dynamic_cast<Expr *>(varName3.ast);
+		Expr * exp3 = dynamic_cast<Expr *>(expr3.ast);
+		pr.ast = new ComplexMatrixAssignDecl(var, exp1, exp2, var2, var3, exp3);
+    }
+	// Decl ::= 'Matrix' varName '=' Expr ';'
+	else if(attemptMatch(assign)){
+		//cout << "Yay" << endl;
+		ParseResult expr = parseExpr(0);
+
+ 	
+		Expr * exp1 = dynamic_cast<Expr *>(expr.ast);
+		pr.ast = new SimpleMatrixAssignDecl(var, exp1);
+		
+    }
+	else{
+    	throw ( (string) "Bad Syntax of Matrix Decl in in parseMatrixDecl" ) ;
+	}	
+
+    match(semiColon) ;
+
+    return pr ;
+}
+
+/*! \brief Creates a ParseResult to be tested in 
+ast_driver.cpp.
+  \param A const char of text input
+  \return A ParseResult
+*/
+ParseResult Parser::parseDecl (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseDecl() ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+    
+    
+}
+// standardDecl
+/*! \brief Creates a ParseResult and attempts to match it to a standard declaration
+  \return A ParseResult for StandardDecl
+*/
+ParseResult Parser::parseStandardDecl(){
+    ParseResult pr ;
+    std::string kwd;
+	
+	//ParseResult prType = parseType() ;
+
+    if ( attemptMatch(intKwd) ) {
+	// Type ::= intKwd    
+    } 
+    else if ( attemptMatch(floatKwd) ) {
+	// Type ::= floatKwd
+    }
+    else if (attemptMatch(stringKwd)){
+	// Type ::= stringKwd
+	} 
+        
+    kwd = prevToken->lexeme.c_str();
+    match(variableName) ;
+
+    pr.ast = new StandardDecl(kwd, prevToken->lexeme.c_str());
+    match(semiColon) ;
+    return pr ;
+}
+
+// Decl
+//! \return A ParseResult that is matched to either MatrixDecl or StandardDecl
+ParseResult Parser::parseDecl () {
+    ParseResult pr ;
+	// Decl :: Matrix variableName ....
+	if(nextIs(matrixKwd)){
+		pr =parseMatrixDecl();
+	} 
+	else{
+		pr=parseStandardDecl();
+	}
+    return pr ;
+}
+
+// Stmts
+/*! \brief Creates a ParseResult that will test parseStmts in ast_driver.cpp
+   \param A const char of text input
+   \return A ParseResult
+*/
+ParseResult Parser::parseStmts (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseStmts() ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+}
+/*! \brief Create a ParseResult and it matches a Stmts to either an expanded statements
+or an empty statements. Creates A Stmt and Stmts for expanded statements
+  \return A Parseresult
+*/
+ParseResult Parser::parseStmts () {
+    ParseResult pr ;
+    if ( !nextIs(endOfFile) && !nextIs(inKwd) && !nextIs(rightCurly) ) {
+        // Stmts ::= Stmt Stmts
+        ParseResult prStmt = parseStmt() ;
+        ParseResult prStmts = parseStmts() ;
+        
+        Stmt * stmt = dynamic_cast<Stmt *>(prStmt.ast);
+        Stmts * stmts = dynamic_cast<Stmts *>(prStmts.ast);
+        pr.ast = new ExpandStmts(stmt, stmts);
+    }
+    else {
+        // Stmts ::= 
+        // nothing to match.
+        pr.ast = new EmptyStmts();
+    }
+    return pr ;
+}
+
+
+// Stmt
+
+/*! \brief Creates a ParseResult for a Stmt to be tested in ast_driver.cpp
+  \param A const char of text input
+  \return A ParseResult
+*/
+ParseResult Parser::parseStmt (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseStmt() ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+}
+
+/*! \brief Creates a ParseResult for a Stmt and matches it to the appropriate
+subclass.
+  \return A ParseResult for a Stmt
+*/
+ParseResult Parser::parseStmt () {
+    ParseResult pr ;
+	std::string varName;
+	ParseResult pr1;
+	ParseResult pr2;
+	ParseResult pr3;
+	bool matrix = false;
+	
+	
+	// Stmt ::= Decl
+	if(nextIs(intKwd)||nextIs(floatKwd)||nextIs(matrixKwd)||nextIs(stringKwd)){
+		pr1 = parseDecl();
+		
+		Decl * decl = dynamic_cast<Decl *>(pr1.ast);
+		pr.ast = new DeclStmt(decl);
+	}
+	// Stmt ::= '{' Stmts '}'
+	else if (attemptMatch(leftCurly)){
+		pr1 = parseStmts(); 
+		match(rightCurly);
+		
+		Stmts * stmts = dynamic_cast<Stmts *>(pr1.ast);
+		pr.ast = new BlockStmt(stmts);
+		
+	}	
+	// Stmt ::= 'if' '(' Expr ')' Stmt
+	// Stmt ::= 'if' '(' Expr ')' Stmt 'else' Stmt
+	else if (attemptMatch(ifKwd)){
+		match(leftParen);
+		pr1 = parseExpr(0);
+		match(rightParen);
+		pr2 = parseStmt();
+		
+		Expr * expr = dynamic_cast<Expr *>(pr1.ast);
+		Stmt * stmt1 = dynamic_cast<Stmt *>(pr2.ast);
+		
+		if(attemptMatch(elseKwd)){
+			pr3 = parseStmt();
+			
+			Stmt * stmt2 = dynamic_cast<Stmt *>(pr3.ast);
+			pr.ast = new IfElseStmt(expr, stmt1, stmt2); 
+		}
+		else
+		{
+			pr.ast = new IfStmt(expr, stmt1);
+		}
+	}
+	// Stmt ::= varName '=' Expr ';'  | varName '[' Expr ',' Expr ']' '=' Expr ';'
+	else if  ( attemptMatch (variableName) ) {
+		varName = prevToken->lexeme.c_str();
+		if (attemptMatch ( leftSquare ) ) {
+			  pr1 = parseExpr(0);
+			  match ( comma ) ;
+			  pr2 = parseExpr (0) ;
+			  match  ( rightSquare ) ;
+			  matrix = true;
+		}
+		
+		match(assign);
+		pr3 = parseExpr(0);
+		match(semiColon);
+		
+		Expr * expr3 = dynamic_cast<Expr *>(pr3.ast);
+		if(matrix)
+		{
+			Expr * expr1 = dynamic_cast<Expr *>(pr1.ast);
+			Expr * expr2 = dynamic_cast<Expr *>(pr2.ast);
+			pr.ast = new MatrixAssignStmt(varName, expr1, expr2, expr3);
+		}
+		else
+		{
+			pr.ast = new AssignStmt(varName, expr3);
+		}
+	}
+	// Stmt ::= 'print' '(' Expr ')' ';'
+	else if ( attemptMatch (printKwd) ) {
+		match (leftParen) ;
+		pr1 = parseExpr(0);
+		match (rightParen) ;
+    	match (semiColon) ;
+    	Expr * expr = dynamic_cast<Expr *>(pr1.ast);
+    	pr.ast = new PrintStmt(expr);
+	}
+	// Stmt ::= 'for' '(' varName '=' Expr 'to' Expr ')' Stmt
+	else if ( attemptMatch (forKwd) ) {
+		match (leftParen) ;
+		match (variableName) ;
+		varName = prevToken->lexeme.c_str();
+		match (assign) ;
+		pr1 = parseExpr (0) ;
+		match (toKwd) ;
+		pr2 = parseExpr (0) ;
+		match (rightParen) ;
+		pr3 = parseStmt () ;
+		Expr * expr1 = dynamic_cast<Expr *>(pr1.ast);
+		Expr * expr2 = dynamic_cast<Expr *>(pr2.ast);
+		Stmt * stmt = dynamic_cast<Stmt *>(pr3.ast);
+		pr.ast = new ForStmt(varName, expr1, expr2, stmt);
+	}
+	// Stmt ::= ';'
+    else if ( attemptMatch (semiColon) ) {
+		// parsed a skip
+		pr.ast = new SemiStmt();
+	}
+	else{
+		throw ( makeErrorMsg ( currToken->terminal ) + " while parsing a statement" ) ;
+	}
+	// Stmt ::= variableName assign Expr semiColon
+    return pr ;
+}
+
+/*! \brief Creates A ParseResult to test an Expr in ast_driver.cpp
+  \param A const char of text input
+  \return A ParseResult
+*/
+ParseResult Parser::parseExpr (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseExpr( 0 ) ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+}
+
+
+
+// Expr
+
+/*! \brief Creates A ParseResult for an Expr
+  \return A ParseResult
+*/
+ParseResult Parser::parseExpr (int rbp) {
+    /* Examine current token, without consuming it, to call its
+       associated parse methods.  The ExtToken objects have 'nud' and
+       'led' methods that are dispatchers that call the appropriate
+       parse methods.*/
+    ParseResult left = currToken->nud() ;
+   
+    while (rbp < currToken->lbp() ) {
+		left = currToken->led(left) ;
+    }
+
+    return left ;
+}
+
+
+/*
+ * parse methods for Expr productions
+ * ----------------------------------
+ */
+
+/*! \brief Creates a ParseResult to be tested as an IntConst in ast_driver.cpp
+  \param A const char of text input
+  \return A ParseResult
+*/
+ParseResult Parser::parseIntConst (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseIntConst() ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+}
+
+
+
+// Expr ::= intConst
+
+/*! \brief Creates a ParseResult and attempts to match it to an integer constant.
+  \return A ParseResult for IntExpr
+*/
+ParseResult Parser::parseIntConst ( ) {
+    ParseResult pr ;
+    // printf("%s\n", currToken->lexeme.c_str());
+    match ( intConst ) ;
+    
+    pr.ast = new IntExpr(prevToken->lexeme.c_str());
+    // ((IntExpr *)pr.ast)->unparse() = currToken->lexeme.c_str();
+    return pr ;
+}
+/*! \brief Creates a ParseResult to be tested as a FloatConst in ast_driver.cpp
+  \param A const char of text input
+  \return A ParseResult
+*/
+ParseResult Parser::parseFloatConst (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseFloatConst() ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+}
+
+// Expr ::= floatConst
+/*! \brief Creates a ParseResult and attempts to match it to a float constant.
+  \return A ParseResult for FloatExpr
+*/
+ParseResult Parser::parseFloatConst ( ) {
+    ParseResult pr ;
+    match ( floatConst ) ;
+    pr.ast = new FloatExpr(prevToken->lexeme.c_str());
+    return pr ;
+}
+
+
+/*! \brief Creates a ParseResult to be tested as a StringConst in ast_driver.cpp
+  \param A const char of text input
+  \return A ParseResult
+*/
+ParseResult Parser::parseStringConst (const char *text) {
+    assert (text != NULL) ;
+
+    ParseResult pr ;
+    try {
+        s = new Scanner() ;
+        stokens = s->scan (text) ;        
+        tokens = extendTokenList ( this, stokens ) ;
+
+        assert (tokens != NULL) ;
+        currToken = tokens ;
+        pr = parseStringConst() ;
+    }
+    catch (string errMsg) {
+        pr.ok = false ;
+        pr.errors = errMsg ;
+        pr.ast = NULL ;
+    }
+    return pr ;
+}
+
+// Expr ::= stringConst
+/*! \brief Creates A ParseResult and attempts to match it to a string constant
+  \return A ParseResult for StringExpr
+*/
+ParseResult Parser::parseStringConst ( ) {
+    ParseResult pr ;
+    match ( stringConst ) ;
+    pr.ast = new StringExpr(prevToken->lexeme.c_str());
+    return pr ;
+}
+
+// Expr ::= variableName .....
+/*! \brief Creates a ParseResult and attempts to match it to a variable name
+  \return A ParseResult for varExpr
+*/
+ParseResult Parser::parseVariableName ( ) {
+    ParseResult pr ;
+    match ( variableName ) ;
+    std::string vName = prevToken->lexeme.c_str();
+    if(attemptMatch(leftSquare)){ //array variable?
+		ParseResult prExpr1 = parseExpr(0);
+		match(comma);
+		ParseResult prExpr2 = parseExpr(0);
+		match(rightSquare);
+		Expr * expr1 = dynamic_cast<Expr *>(prExpr1.ast);
+		Expr * expr2 = dynamic_cast<Expr *>(prExpr2.ast);
+		pr.ast = new MatrixVarExpr(vName, expr1, expr2);
+	}
+	// Expr ::= varableName '(' Expr ')'        //NestedOrFunctionCall
+    else if(attemptMatch(leftParen)){
+		ParseResult prExpr = parseExpr(0);
+		match(rightParen);
+		Expr * expr = dynamic_cast<Expr *>(prExpr.ast);
+		
+		pr.ast = new VarParenExpr(vName, expr);
+	}
+	// Expr := variableName
+	else{
+		// variable 
+		pr.ast = new VarExpr(vName);
+	}
+    return pr ;
+}
+
+
+// Expr ::= leftParen Expr rightParen
+/*! \brief Creates a ParseResult and attempts to match it to an Expr enclosed in parenthesis
+  \return A ParseResult for an ExprExpr
+*/
+ParseResult Parser::parseNestedExpr ( ) {
+    ParseResult pr ;
+    match ( leftParen ) ;
+    ParseResult prExpr = parseExpr(0) ; 
+    match(rightParen) ;
+    
+    Expr * expr = dynamic_cast<Expr *>(prExpr.ast);
+    pr.ast = new ExprExpr(expr);
+    return pr ;
+}
+
+// Expr ::= 'if' Expr 'then' Expr 'else' Expr  
+/*! \brief Creates A ParseResult and attempts to match it to an 'if' expression
+  \return A parseResult for an IfElseExpr
+*/
+ParseResult Parser::parseIfExpr(){
+	 ParseResult pr ; 
+	
+	match(ifKwd);
+	ParseResult prExpr1 = parseExpr(0);
+	match(thenKwd);
+	ParseResult prExpr2 = parseExpr(0);
+	match(elseKwd);
+	ParseResult prExpr3 = parseExpr(0);
+	Expr * expr1 = dynamic_cast<Expr *>(prExpr1.ast);
+	Expr * expr2 = dynamic_cast<Expr *>(prExpr2.ast);
+	Expr * expr3 = dynamic_cast<Expr *>(prExpr3.ast);
+	pr.ast = new IfElseExpr(expr1, expr2, expr3);
+    return pr;
+}
+
+
+// Expr ::= 'let' Stmts 'in' Expr 'end' 
+/*! \brief Creates a ParseResult attempts to match it to a 'let' expression
+  \return A parseResult for a LetExpr
+*/
+ParseResult Parser::parseLetExpr(){
+	ParseResult pr ;
+	match(letKwd);
+	ParseResult prStmts = parseStmts();
+	match(inKwd);
+	ParseResult prExpr = parseExpr(0);
+	match(endKwd);
+	Stmts * stmts = dynamic_cast<Stmts *>(prStmts.ast);
+	Expr * expr = dynamic_cast<Expr *>(prExpr.ast);
+	pr.ast = new LetExpr(stmts, expr);
+	return pr;
+}
+
+// Expr ::= '!' Expr 
+/*! \brief Creates a ParseResult and attempts to match it to a expression involving a not statement
+  \return A ParseResult for NotExpr
+*/
+ParseResult Parser::parseNotExpr () {
+    ParseResult pr ;
+    match ( notOp ) ;
+    ParseResult prExpr = parseExpr( 0 );
+    Expr * expr = dynamic_cast<Expr *>(prExpr.ast);
+    pr.ast = new NotExpr(expr); 
+    return pr ;
+
+}
+// Expr ::= Expr plusSign Expr
+/*! \brief Creates a ParseResult and attempts to match it to 2 expressions being added
+  \param A ParseResult of the epxression before the binary operator
+  \return A parseResult for a BinaryExpr
+*/
+ParseResult Parser::parseAddition ( ParseResult prLeft ) {
+    //! parser has already matched left expression 
+    ParseResult pr ;
+    match ( plusSign ) ;
+    pr = parseExpr( prevToken->lbp() );
+    Expr * leftExpr = dynamic_cast<Expr *>(prLeft.ast);
+    Expr * rightExpr = dynamic_cast<Expr *>(pr.ast);
+    pr.ast = new BinaryExpr(leftExpr , " + ", rightExpr );
+    return pr ;
+}
+
+// Expr ::= Expr star Expr
+/*! \brief Creates a ParseResult and attempts to match it to 2 expressions being multiplied
+  \param A ParseResult of the epxression before the binary operator
+  \return A parseResult for a BinaryExpr
+*/
+ParseResult Parser::parseMultiplication ( ParseResult prLeft ) {
+    //! parser has already matched left expression 
+    ParseResult pr ;
+    match ( star ) ;
+    pr = parseExpr( prevToken->lbp() );
+    Expr * leftExpr = dynamic_cast<Expr *>(prLeft.ast);
+    Expr * rightExpr = dynamic_cast<Expr *>(pr.ast);
+    pr.ast = new BinaryExpr(leftExpr , " * ", rightExpr );
+    return pr ;
+}
+
+// Expr ::= Expr dash Expr
+/*! \brief Creates a ParseResult and attempts to match it to 2 expressions being subtracted
+  \param A ParseResult of the epxression before the binary operator
+  \return A parseResult for a BinaryExpr
+*/
+ParseResult Parser::parseSubtraction ( ParseResult prLeft ) {
+    //! parser has already matched left expression 
+    ParseResult pr ;
+    match ( dash ) ;
+    pr = parseExpr( prevToken->lbp() );
+	Expr * leftExpr = dynamic_cast<Expr *>(prLeft.ast);
+    Expr * rightExpr = dynamic_cast<Expr *>(pr.ast);
+    pr.ast = new BinaryExpr(leftExpr , " - ", rightExpr );
+    return pr ;
+}
+
+// Expr ::= Expr forwardSlash Expr
+/*! \brief Creates a ParseResult and attempts to match it to 2 expressions being divided
+  \param A ParseResult of the epxression before the binary operator
+  \return A parseResult for a BinaryExpr
+*/
+ParseResult Parser::parseDivision ( ParseResult prLeft ) {
+    // parser has already matched left expression 
+    ParseResult pr ;
+    match ( forwardSlash ) ;
+    pr = parseExpr( prevToken->lbp() );
+    Expr * leftExpr = dynamic_cast<Expr *>(prLeft.ast);
+    Expr * rightExpr = dynamic_cast<Expr *>(pr.ast);
+    pr.ast = new BinaryExpr(leftExpr , " / ", rightExpr );
+    return pr ;
+}
+
+
+
+/* Notice that for relational operators we use just one parse
+   function.  This shows another possible means for implementing
+   expressions, as opposed to the method used for arithmetic
+   expressions in which each operation has its own parse method.  It
+   will depend on what we do in iteration 3 in building an abstract
+   syntax tree to decide which method is better.
+ */
+
+/*! \brief Creates a ParseResult and attempts to a relational expression
+  \param A ParseResult of the epxression before the binary operator
+  \return A parseResult for a BinaryExpr
+*/
+ParseResult Parser::parseRelationalExpr ( ParseResult prLeft ) {
+    // parser has already matched left expression 
+    ParseResult pr ;
+    nextToken( ) ;
+    // just advance token, since examining it in parseExpr caused
+    // this method being called.
+    string op = prevToken->lexeme ;
+	op = " " + op + " ";
+    pr = parseExpr( prevToken->lbp() );
+    Expr * leftExpr = dynamic_cast<Expr *>(prLeft.ast);
+    Expr * rightExpr = dynamic_cast<Expr *>(pr.ast);
+    pr.ast = new BinaryExpr(leftExpr , op, rightExpr );
+    return pr ;
+}
+
+
+// Helper function used by the parser.
+/*! \brief Throws an exception if attemptMatch returns false
+  \param A tokenType
+*/
+void Parser::match (tokenType tt) {
+    if (! attemptMatch(tt)) {
+        throw ( makeErrorMsgExpected ( tt ) ) ;
+    }
+}
+/*! \brief Returns true if token is part of terminal, otherwise returns false
+  \param A tokenType
+  \return A bool
+*/
+bool Parser::attemptMatch (tokenType tt) {
+    if (currToken->terminal == tt) { 
+        nextToken() ;
+        return true ;
+    }
+    return false ;
+}
+/*! \brief Returns true if next token is part of terminal
+  \param A tokenType
+  \return A bool
+*/
+bool Parser::nextIs (tokenType tt) {
+    return currToken->terminal == tt ;
+}
+
+//! \brief Advances to the next terminal in the list
+
+void Parser::nextToken () {
+    if ( currToken == NULL ) 
+        throw ( string("Internal Error: should not call nextToken in unitialized state"));
+    else 
+    if (currToken->terminal == endOfFile && currToken->next == NULL) {
+        prevToken = currToken ;
+    } else if (currToken->terminal != endOfFile && currToken->next == NULL) {
+        throw ( makeErrorMsg ( "Error: tokens end with endOfFile" ) ) ;
+    } else {
+        prevToken = currToken ;
+        currToken = currToken->next ;
+    }
+}
+
+/*! \param A tokenType
+    \return A string of the tokenType
+*/
+string Parser::terminalDescription (tokenType terminal ) {
+    Token *dummyToken = new Token ("",terminal, NULL) ;
+    ExtToken *dummyExtToken = extendToken (this, dummyToken) ;
+    string s = dummyExtToken->description() ;
+    delete dummyToken ;
+    delete dummyExtToken ;
+    return s ;
+}
+/*! \brief Creates an error message for bad syntax
+  \param A tokenType
+  \return A string of the error message
+*/
+string Parser::makeErrorMsgExpected ( tokenType terminal ) {
+    string s = (string) "Expected " + terminalDescription (terminal) +
+        " but found " + currToken->description() ;
+    return s ;
+}
+/*! \brief Creates an error message for a bad token
+  \param A tokenType
+  \return A string of the error message
+*/
+string Parser::makeErrorMsg ( tokenType terminal ) {
+    string s = "Unexpected symbol " + terminalDescription (terminal) ;
+    return s ;
+}
+/*! \brief Outputs an error message that is given to it
+  \param A constant char that contains the error message
+  \return The message it recieved
+*/
+string Parser::makeErrorMsg ( const char *msg ) {
+    return msg ;
+}
+
+//================================================
+//========== Unparse & cppCode Methods ===========
+//================================================
+
+//Program (Program)
+
+/*!
+  \brief Creates a string with a varName string followed by 2 parenthesis and a left bracket
+"() {", an unparsed Stmts, and a right bracket "}".
+  \return string 
+*/
+std::string Program::unparse()
+	{
+		std::stringstream ss;
+		ss << varName << "() {\n" << stmts->unparse() << " }";
+		return ss.str();
+	}
+
+std::string Program::cppCode()
+	{
+		std::stringstream ss;
+		ss <<"#include <iostream> \n#include \"../samples/Matrix.h\" \n#include <math.h> \nusing namespace std;\n" 
+          << "int " << varName << "() {\n" << stmts->cppCode() << " }";
+		return ss.str();
+  	}
+
+//Declarations (Decl)
+
+/*! 
+  \brief Creates a string with the kwd string and a varName string.
+  \return string
+*/ 
+std::string StandardDecl::unparse() { 
+		std::stringstream ss;
+		ss << kwd << " " << varName << ";" << std::endl;
+		return ss.str(); }
+
+std::string StandardDecl::cppCode() {
+		std::stringstream ss;
+		if(kwd == "Integer")
+		{
+			ss << "int" << " " << varName << ";" << std::endl;	
+		}
+		else if(kwd == "Float")
+		{
+			ss << "float" << " " << varName << ";" << std::endl;
+		}
+		else if(kwd == "String")
+		{
+			ss << "string" << " " << varName << ";" << std::endl;
+		}
+		//ss << "extern " << kwd << " " << varName << ";" << std::endl;
+		return ss.str(); }
+
+/*! 
+  \brief Creates a string for a Decl of a simple matrix in DSL syntax.  Includes the 
+varName string and an unparsed Expr
+  \return string 
+*/
+std::string SimpleMatrixAssignDecl::unparse() {
+		std::stringstream ss;
+		ss << "Matrix " << varName << " = " << expr->unparse() << ";" << std::endl; 
+		return ss.str() ;}
+		
+std::string SimpleMatrixAssignDecl::cppCode() {
+		std::stringstream ss;
+		ss << "Matrix " << varName << " = " << varName << "." << expr->cppCode() << ";" << std::endl;
+		return ss.str(); 
+		}
+
+/*!
+  \brief Creates a string for a Decl of a complex matrix in DSL syntax. The first varName is a string
+and the other 2 are Expr objects.  There is an additional 3 Expr objects.
+  \return string
+*/
+std::string ComplexMatrixAssignDecl::unparse() {
+		std::stringstream ss;
+		ss << "Matrix " << varName << " [" << expr->unparse() << " , " << expr2->unparse() << "] "
+			<< varName2->unparse() << " , " << varName3->unparse() << " = " << expr3->unparse() << ";" << std::endl;
+			return ss.str(); }
+			
+	
+std::string ComplexMatrixAssignDecl::cppCode() {
+		std::stringstream ss;
+		ss << "Matrix " << varName << " = *(new Matrix(" << expr->cppCode() << "," << expr2->cppCode() << "))" << ";" << std::endl
+<< "for(int " << varName2->cppCode() << " = 0; " << varName2->cppCode() << "<" << expr->cppCode() << ";" << varName2->cppCode() << "++){ \n"
+	<< "for(int " << varName3->cppCode() << " = 0;" << varName3->cppCode() << "<" << expr2->cppCode() << ";" << varName3->cppCode() << "++){ \n"
+		<< "*" <<varName << ".access(" << varName2->cppCode() << "," << varName3->cppCode() << ") = (float)" << expr3->cppCode() << ";\n } \n } \n";
+
+			return ss.str(); }
+//Statements (Stmts)		
+
+/*!
+  \brief Creates a string with an unparsed Stmt and an unparsed Stmts.
+  \return string 
+*/
+std::string ExpandStmts::unparse()
+	{
+    	std::stringstream ss;
+    	ss << stmt->unparse() << stmts->unparse(); 
+    	return ss.str();
+	}
+
+std::string ExpandStmts::cppCode() {
+	std::stringstream ss;
+	ss << stmt->cppCode() << stmts->cppCode();
+	return ss.str();
+	}
+
+/*!
+  \return An empty string
+*/	
+std::string EmptyStmts::unparse()
+	{then
+    	return ""; 
+	}
+
+std::string EmptyStmts::cppCode()
+	{
+		return "";
+	}
+
+/*!
+  \return A semicolon and line break "\n"
+*/
+std::string SemiStmt::unparse()
+	{
+		return ";\n";
+	}
+	
+std::string SemiStmt::cppCode()
+	{
+		const std::string s = ";\n";
+		return s;
+	}
+
+/*!
+  \brief Creates a string for an assignment statement.  Includes a varName string
+followed by an " = " and an unparsed Expr.
+  \return string 
+*/
+std::string AssignStmt::unparse()
+	{
+		std::stringstream ss;
+    	ss << varName << " = " << expr->unparse() << ";" << std::endl; 
+    	return ss.str();
+	}
+	
+std::string AssignStmt::cppCode()
+	{
+		std::stringstream ss;
+		ss << varName << " = " << expr->cppCode() << ";" << std::endl;
+		return ss.str();
+	}
+
+/*! 
+  \brief Creates a string for a 'for loop' in DSL syntax.  Includes a varName string followed by
+2 unparsed Expr objects and an unparsed Stmt.
+  \return string 
+*/	
+std::string ForStmt::unparse()
+	{
+		std::stringstream ss;
+    	ss << "for ( " << varName << " = " << expr1->unparse() << " to " << expr2->unparse() << " )" << stmt->unparse(); 
+    	return ss.str();
+	}
+std::string ForStmt::cppCode()
+	{
+		std::stringstream ss;
+		ss << "for ( int " << varName << " = " << expr1->cppCode() << ";" << varName << " <= "  << expr2->cppCode() << "; " << varName << "++" << " ) " << stmt->cppCode();
+		return ss.str();
+	}
+	
+/*!
+  \brief Creates a string for a print statement in DSL syntax.  Includes an unparsed Expr.
+  \return string
+*/
+std::string PrintStmt::unparse()
+	{
+		std::stringstream ss;
+    	ss << "print (" << expr->unparse() << " ); "; 
+    	return ss.str();
+	}
+
+std::string PrintStmt::cppCode()
+	{
+		std::stringstream ss;
+    	ss << "cout << " << expr->cppCode() << ";"; 
+    	return ss.str();
+	}
+/*! 
+  \brief Creates a string for a matrix assignment in DSL syntax.  Includes a varName string and 3
+unparsed Expr objects.
+  \return string
+*/	
+std::string MatrixAssignStmt::unparse()
+	{
+		std::stringstream ss;
+		//varName '[' Expr ',' Expr ']' '=' Expr ';'
+    	ss << varName << "[" << expr1->unparse() << " , " << expr2->unparse() << "] = " << expr3->unparse() << ";" << std::endl; 
+    	return ss.str();
+	}
+
+std::string MatrixAssignStmt::cppCode()
+	{
+		std::stringstream ss;
+		//varName '[' Expr ',' Expr ']' '=' Expr ';'
+    	ss << "*" << varName << ".access(" << expr1->cppCode() << " , " << expr2->cppCode() << ") = " << expr3->cppCode() << ";" << std::endl; 
+    	return ss.str();
+	}
+
+/*!
+  \brief Creates a string for an 'if statement' in DSL syntax.  Includes 2 unparsed Expr objects
+  \return string
+*/ 	
+std::string IfStmt::unparse()
+	{
+		std::stringstream ss;
+		//'if' '(' Expr ')' Stmt
+    	ss << "if ( " << expr->unparse() << " ) " << stmt->unparse() << std::endl; 
+    	return ss.str();
+	}
+	
+std::string IfStmt::cppCode()
+	{
+		std::stringstream ss;
+		//'if' '(' Expr ')' Stmt
+    	ss << "if ( " << expr->cppCode() << " ) { " << stmt->cppCode() << "}" << std::endl; 
+    	return ss.str();
+	}
+/*!
+  \brief Creates a string for an if/else statement in DSL syntax.  Includes an unparsed Expr and
+2 unparsed Stmt objects.
+  \return string 
+*/ 
+std::string IfElseStmt::unparse()
+	{
+		std::stringstream ss;
+		//'if' '(' Expr ')' Stmt 'else' Stmt
+    	ss << "if ( " << expr1->unparse() << " ) " << stmt1->unparse() << " else " << stmt2->unparse() << std::endl; 
+    	return ss.str();
+	}
+
+std::string IfElseStmt::cppCode()
+	{
+		std::stringstream ss;
+		//'if' '(' Expr ')' Stmt 'else' Stmt
+    	ss << "if ( " << expr1->cppCode() << " ) { " << stmt1->cppCode() << " } else { " << stmt2->cppCode() << "}" << std::endl; 
+    	return ss.str();
+	}
+
+/*! 
+  \brief Creates a string for statements in brackets.  Includes an unparsed Stmts and " { " and " } "
+string literals
+  \return string
+*/
+std::string BlockStmt::unparse()
+	{
+		std::stringstream ss;
+		//'if' '(' Expr ')' Stmt 'else' Stmt
+    	ss << " { " << stmts->unparse() << " } "; 
+    	return ss.str();
+	}
+	
+std::string BlockStmt::cppCode()
+	{
+		std::stringstream ss;
+		//'if' '(' Expr ')' Stmt 'else' Stmt
+    	ss << " { \n\t" << stmts->cppCode() << "\n }\n"; 
+    	return ss.str();
+	}
+
+/*!
+  \return An unparsed Decl object
+*/	
+std::string DeclStmt::unparse()
+	{
+    	return decl->unparse();
+	}
+	
+std::string DeclStmt::cppCode()
+	{
+    	return decl->cppCode();
+	}	
+// Expressions
+
+/*!
+  \return intConst
+*/
+std::string IntExpr::unparse() {return intConst;}
+
+std::string IntExpr::cppCode() {return intConst;}
+
+/*!
+  \return floatConst
+*/
+
+std::string FloatExpr::unparse() {return floatConst;}
+
+std::string FloatExpr::cppCode() {return floatConst;}
+
+/*!
+  \return stringConst
+*/
+std::string StringExpr::unparse() {return stringConst;}
+
+std::string StringExpr::cppCode() {return stringConst;}
+
+/*!
+  \brief Creates a string with 2 unparsed Expr objects and a string with the correct binary 
+operator (+,-,*,/,>,<,<=,>=,==,&&,||,!=).  
+  \return string
+*/
+std::string BinaryExpr::unparse() 
+	{
+    	std::stringstream ss;
+    	ss << opr1->unparse() << sign << opr2->unparse() ;
+    	return ss.str();
+  	}
+
+std::string BinaryExpr::cppCode() 
+	{
+    	std::stringstream ss;
+    	ss << opr1->cppCode() << sign << opr2->cppCode() ;
+    	return ss.str();
+  	}
+
+/*!
+  \return string varName
+*/
+  	
+std::string VarExpr::unparse()
+	{
+		return varName;
+	}
+	
+std::string VarExpr::cppCode()
+	{
+		return varName;
+	}	
+/*!
+  \brief Creates a string with a varName multiplied by an unparsed Expr encolosed 
+in paraenthesis.
+  \return string
+*/
+std::string VarParenExpr::unparse()
+	{
+		std::stringstream ss;
+    	ss << varName << " ( " << expr->unparse() << " )";
+    	return ss.str();
+	}
+	
+std::string VarParenExpr::cppCode()
+	{
+		std::stringstream ss;
+    	ss << varName << " ( " << expr->cppCode() << " )";
+    	return ss.str();
+	}
+/*!
+  \brief Creates an unparsed Expr enclosed in parenthesis 
+  \return string 
+*/   
+std::string ExprExpr::unparse()
+	{
+		std::stringstream ss;
+    	ss << " ( " << expr->unparse() << " ) ";
+    	return ss.str();
+	}
+
+std::string ExprExpr::cppCode()
+	{
+		std::stringstream ss;
+    	ss << " ( " << expr->cppCode() << " ) ";
+    	return ss.str();
+	}
+
+/*!
+  \brief Creates a string with a '!' before an unparsed Expr
+  \return string
+*/
+std::string NotExpr::unparse()
+	{
+		std::stringstream ss;
+    	ss << "!" << expr->unparse();
+    	return ss.str();
+	}
+	
+std::string NotExpr::cppCode()
+	{
+		std::stringstream ss;
+    	ss << "!" << expr->cppCode();
+    	return ss.str();
+	}
+
+/*!
+  \brief Creates a string for an if/else expression in DSL syntax.  Includes 3 unparsed Expr objects.
+  \return string
+*/
+std::string IfElseExpr::unparse()
+	{
+		std::stringstream ss;
+    	ss << " if " << expr1->unparse() << " then " << expr2->unparse() << " else " << expr3->unparse(); 
+    	return ss.str();
+	}
+
+std::string IfElseExpr::cppCode()
+	{
+		std::stringstream ss;
+
+    	ss << "( " << expr1->cppCode() << " ) ? ( " << expr2->cppCode() << " ) : ( " << expr3->cppCode() << ")" ; 
+
+    	return ss.str();
+	}
+
+/*! 
+  \brief Creates a string for a let expression in DSL syntax.  Includes unparsed Stmts and Expr objects.
+  \return string
+*/
+  	
+std::string LetExpr::unparse()	
+	{
+    	std::stringstream ss;
+		// 'let' Stmts 'in' Expr 'end' 
+    	ss << " let " << stmts->unparse() << " in " << expr->unparse() << " end" << std::endl; 
+    	return ss.str();
+	}
+
+std::string LetExpr::cppCode()
+	{
+    	std::stringstream ss;
+		// 'let' Stmts 'in' Expr 'end' 
+    	ss << " ({ " << stmts->cppCode() << expr->cppCode() << "; }) " << std::endl;
+    	return ss.str();
+	}
+
+/*!
+  \brief Creates a string for an expression invoving a matrix variable in DSL syntax.  Includes the string
+varName and 2 unparsed Expr objects enclosed in square brackets "[]"
+  \return string
+*/
+std::string MatrixVarExpr::unparse()
+	{
+    	std::stringstream ss; 
+    	ss << varName << " [ " << expr1->unparse() << " , " << expr2->unparse() << " ] "; 
+    	return ss.str();
+	}
+	
+std::string MatrixVarExpr::cppCode()
+	{
+    	std::stringstream ss;
+
+    	ss << "*" << varName << ".access(" << expr1->cppCode() << " , " << expr2->cppCode() << " ) "; 
+
+    	return ss.str();
+	}

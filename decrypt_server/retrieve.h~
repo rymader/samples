@@ -1,0 +1,41 @@
+/*************************************************************
+	
+	Header file for retrieve 
+
+	Authors:
+	Ryan Mader
+	Madison Hennig
+
+**************************************************************/
+
+#ifndef RETRIEVE_H
+#define RETRIEVE_H
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+typedef struct qnode {
+	char *path;
+	struct qnode *next;
+} NODE;
+
+static NODE *HEAD;
+
+
+FILE *open_file(char *filename, char *tag);
+char *getLine(char*, FILE*);
+int addNode(char *line);
+void makeClientList();
+void outLog(NODE *current);
+
+void decrypt(char* args[]);
+NODE *pop();
+
+sem_t sem1;
+sem_t sem2;
+pthread_mutex_t mutex;
+
+
+
+#endif
