@@ -1,0 +1,9 @@
+samples
+=======
+decrypt_server (Class: Intro to Operating Systems): This is a C program that has client and server executables for sending and decoding decrypted messages.  The program uses a Caesar Cipher to decrypt text on the server and send it back to the client.
+
+python_programs (Class: Structures of Computer Programming I):  Programs I developed during my freshman year at St. Paul College.  It includes at GUI that connects any two points on the screen and calculates the slope between those two points.  Also included is a Monte Carlo Simulation for a game of craps.  A number of games to simulate is entered by the user and a game of craps is simulated for that many times and the success rate of the game is then reported.  Finally, the last program does string comparisons to detect if the entered string is a palindrome.
+
+scheduler (Class: Operating Systems):  This program is written in C++ and is a simulation of a process scheduler that uses a priority queue and round robin scheduling.  The queue is maintained using a red black tree and a clock-tick is simulated with the while loop in main.cpp.  Each iteration of the while loop represents a single clock tick.
+
+translator (Class: Program Design and Develpment):  This was a semester long project I spent working on with one other student for my Program Design and Development class at the University of Minnesota.  It takes a domain specific language (based off MATLAB) and converts it to C++. This was a very large project and contains many files.  I put the files that I spent the most time working on in a folder called "sample_code" for convenience.
